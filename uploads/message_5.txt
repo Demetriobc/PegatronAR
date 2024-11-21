@@ -1,0 +1,441 @@
+import {
+    sendMessage,
+    sendInteractiveMessage,
+    sendInteractiveList,
+} from './functions';
+
+// Types and Interfaces
+interface Product {
+    title: string;
+    link: string;
+    category: ProductCategory;
+}
+
+interface ConversationState {
+    isActive: boolean;
+    currentStep: ConversationStep;
+    lastInteraction: Date;
+}
+
+type ProductCategory =
+    | 'notebooks'
+    | 'mouse'
+    | 'placa_mae'
+    | 'ventoinhas'
+    | 'gabinete'
+    | 'placa_video'
+    | 'mesa'
+    | 'memoria'
+    | 'monitor';
+
+type ConversationStep =
+    | 'INITIAL'
+    | 'CATALOG'
+    | 'WARRANTY'
+    | 'SUPPORT'
+    | 'PAYMENT';
+
+// Constants
+const MAX_CONCURRENT_CONVERSATIONS = 1000;
+const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+const FINAL_TIMEOUT = 2 * 60 * 1000; // 2 minutes
+
+// State Management
+const conversations = new Map<string, ConversationState>();
+const timers = new Map<string, NodeJS.Timeout>();
+
+// Product Catalog - Moved to separate configuration file in practice
+const produtos: Product[] = [
+    {
+        title: 'Mouse Gamer Logitech',
+        link: 'mouse-gamer-logitech-pro',
+        category: 'mouse',
+    },
+    {
+        title: 'Placa Mãe Mancer B450',
+        link: 'placa-mae-mancer-b450m-da-v2-ddr4-socket-am4-m-atx-chipset-amd-b450-mcr-b450m-dav2',
+        category: 'placa_mae',
+    },
+    {
+        title: 'Kit Ventoinhas TGT',
+        link: 'kit-ventoinhas-tgt-humber-argb-3x120mm-branca-tgt-hr3-wh01',
+        category: 'ventoinhas',
+    },
+    {
+        title: 'Gabinete Gamer Mancer',
+        link: 'gabinete-gamer-mancer-cv100-mid-tower-lateral-de-vidro-preto-mcr-cv100-bk',
+        category: 'gabinete',
+    },
+    {
+        title: 'Placa de Vídeo Mancer',
+        link: 'placa-de-video-mancer-radeon-rx-5700-xt-streaky-8gb-gddr6-256-bit-mcr-rx5700xt-stk',
+        category: 'placa_video',
+    },
+    {
+        title: 'Mesa Zinnia Eiffel',
+        link: 'mesa-de-jantar-zinnia-eiffel-zm3-80cm-preto-znc-mefl-bk02',
+        category: 'mesa',
+    },
+    {
+        title: 'Memória T-Force 32GB',
+        link: 'memoria-team-group-t-force-pichau-delta-r-rgb-32gb-1x32gb-ddr4-3200mhz-c16-preto-tf11d432g3200hc16f01',
+        category: 'memoria',
+    },
+    {
+        title: 'Placa de Vídeo Asus RX',
+        link: 'placa-de-video-asus-radeon-rx-6600-dual-v2-8gb-gddr6-128-bit-dual-rx6600-8g-v2',
+        category: 'placa_video',
+    },
+    {
+        title: 'Monitor Gamer Mancer',
+        link: 'monitor-gamer-mancer-horizon-z2-21-5-pol-va-fhd-100hz-1ms-hdmi-vga-mcr-hzn21-bl2',
+        category: 'monitor',
+    },
+];
+
+// Warranty Information - Moved to separate configuration file in practice
+const garantiaInfo: Record<ProductCategory, string> = {
+    notebooks: 'Garantia de 10 meses para notebooks.',
+    mouse: 'Garantia de 12 meses para mouses.',
+    placa_mae: 'Garantia de 24 meses para placas mãe.',
+    ventoinhas: 'Garantia de 6 meses para ventoinhas.',
+    gabinete: 'Garantia de 12 meses para gabinetes.',
+    placa_video: 'Garantia de 24 meses para placas de vídeo.',
+    mesa: 'Garantia de 12 meses para mesas.',
+    memoria: 'Garantia de 24 meses para memórias.',
+    monitor: 'Garantia de 12 meses para monitores.',
+};
+
+// Support Areas Configuration - Moved to separate configuration file in practice
+const areaOptions: Record<string, string> = {
+    suporte: process.env.SUPORTE_PHONE || '',
+    duvidas: process.env.DUVIDAS_PHONE || '',
+};
+
+// Helper Functions
+const clearTimers = (number: string): void => {
+    const timer = timers.get(number);
+    if (timer) {
+        clearTimeout(timer);
+        timers.delete(number);
+    }
+};
+
+const validatePhoneNumber = (number: string): boolean => {
+    return /^\+?[\d\s-]{10,}$/.test(number);
+};
+
+// Main Functions
+const resetConversation = async (number: string): Promise<void> => {
+    if (!validatePhoneNumber(number)) {
+        throw new Error('Invalid phone number');
+    }
+
+    if (conversations.size >= MAX_CONCURRENT_CONVERSATIONS) {
+        throw new Error('Maximum conversation limit reached');
+    }
+
+    conversations.set(number, {
+        isActive: true,
+        currentStep: 'INITIAL',
+        lastInteraction: new Date(),
+    });
+
+    await sendInteractiveList(
+        number,
+        'Bem-vindo à nossa loja! Como posso te ajudar?',
+        [
+            { id: 'catalogo', title: 'Ver Catálogo' },
+            { id: 'areas', title: 'Conversar com Suporte' },
+            { id: 'garantia', title: 'Consultar Garantia' },
+            { id: 'finalizar', title: 'Finalizar Atendimento' },
+        ],
+    );
+
+    setInactivityTimer(number);
+};
+
+const setInactivityTimer = (number: string): void => {
+    clearTimers(number);
+
+    const timer = setTimeout(() => {
+        handleInactivity(number);
+    }, INACTIVITY_TIMEOUT);
+
+    timers.set(number, timer);
+};
+
+const handleInactivity = async (number: string): Promise<void> => {
+    const conversation = conversations.get(number);
+    if (!conversation?.isActive) return;
+
+    await sendInteractiveMessage(number, 'Precisa de ajuda com algo mais?', [
+        { id: 'sim', title: 'Sim' },
+        { id: 'nao', title: 'Não' },
+    ]);
+
+    const timer = setTimeout(() => {
+        endConversation(number);
+    }, FINAL_TIMEOUT);
+
+    timers.set(number, timer);
+};
+
+const endConversation = async (number: string): Promise<void> => {
+    clearTimers(number);
+    conversations.delete(number);
+    await sendMessage(number, 'Conversa encerrada. Obrigado e até a próxima!');
+};
+
+// Main ChatBot Function
+const chatBot = async (
+    number: string,
+    name: string,
+    input: string,
+    wamid: string,
+): Promise<void> => {
+    try {
+        if (!validatePhoneNumber(number)) {
+            throw new Error('Invalid phone number');
+        }
+
+        const conversation = conversations.get(number);
+        if (!conversation?.isActive) {
+            await resetConversation(number);
+            return;
+        }
+
+        setInactivityTimer(number);
+
+        switch (input.toLowerCase()) {
+            case 'catalogo':
+                conversation.currentStep = 'CATALOG';
+                await handleCatalog(number, wamid);
+                break;
+            case 'areas':
+                conversation.currentStep = 'SUPPORT';
+                await handleSupport(number, wamid);
+                break;
+            case 'garantia':
+                conversation.currentStep = 'WARRANTY';
+                await handleWarranty(number, wamid);
+                break;
+            case 'finalizar':
+                await endConversation(number);
+                break;
+            // Adicione estes novos casos
+            case 'pagamento_sim':
+                conversation.currentStep = 'PAYMENT';
+                await handlePayment(number, 'confirm', wamid);
+                break;
+            case 'pagamento_nao':
+                await handlePayment(number, 'cancel', wamid);
+                break;
+            case 'voltar_menu':
+                await resetConversation(number);
+                break;
+            default:
+                await handleStepInput(
+                    number,
+                    input,
+                    wamid,
+                    conversation.currentStep,
+                );
+        }
+    } catch (error) {
+        console.error('ChatBot Error:', error);
+        await sendMessage(
+            number,
+            'Desculpe, ocorreu um erro. Por favor, tente novamente mais tarde.',
+        );
+        await endConversation(number);
+    }
+};
+
+// Handler Functions
+const handleCatalog = async (number: string, wamid: string): Promise<void> => {
+    const productList = produtos
+        .map((p, i) => `${i + 1} - ${p.title}`)
+        .join('\n');
+
+    await sendMessage(
+        number,
+        `Escolha o número do produto:\n${productList}\n11 - Voltar ao Menu\n12 - Finalizar`,
+        wamid,
+    );
+};
+
+// Handler para suporte
+const handleSupport = async (number: string, wamid: string): Promise<void> => {
+    await sendMessage(
+        number,
+        'Selecione a área de suporte:\n- Suporte Técnico\n- Dúvidas Gerais',
+        wamid,
+    );
+};
+
+// Handler para garantia
+const handleWarranty = async (number: string, wamid: string): Promise<void> => {
+    const categories = Object.keys(garantiaInfo).join('\n');
+    await sendMessage(
+        number,
+        `Escolha o produto para ver a garantia:\n${categories}`,
+        wamid,
+    );
+};
+
+// Handler para seleção do catálogo
+const handleCatalogSelection = async (
+    number: string,
+    input: string,
+    wamid: string,
+): Promise<void> => {
+    const index = parseInt(input) - 1;
+    const conversation = conversations.get(number);
+
+    if (input === '11') {
+        await resetConversation(number);
+        return;
+    }
+
+    if (input === '12') {
+        await endConversation(number);
+        return;
+    }
+
+    if (index >= 0 && index < produtos.length && conversation) {
+        const produto = produtos[index];
+        conversation.currentStep = 'PAYMENT'; // Atualiza o estado para PAYMENT
+
+        await sendMessage(
+            number,
+            `Produto escolhido: ${produto.title}.\nLink: ${produto.link}\n\nDeseja realizar o pagamento?`,
+            wamid,
+        );
+        await sendInteractiveMessage(number, 'Confirmar pagamento?', [
+            { id: 'pagamento_sim', title: 'Sim' },
+            { id: 'pagamento_nao', title: 'Não' },
+            { id: 'voltar_menu', title: 'Voltar ao Menu' },
+            { id: 'finalizar', title: 'Finalizar Atendimento' },
+        ]);
+    } else {
+        await sendMessage(
+            number,
+            'Opção inválida. Por favor, selecione um número de produto válido.',
+            wamid,
+        );
+    }
+};
+
+// Handler para seleção de garantia
+const handleWarrantySelection = async (
+    number: string,
+    input: string,
+    wamid: string,
+): Promise<void> => {
+    const category = input.toLowerCase() as ProductCategory;
+
+    if (garantiaInfo[category]) {
+        await sendMessage(number, garantiaInfo[category], wamid);
+        await sendInteractiveMessage(number, 'Deseja mais informações?', [
+            { id: 'voltar_menu', title: 'Voltar ao Menu' },
+            { id: 'finalizar', title: 'Finalizar Atendimento' },
+        ]);
+    } else {
+        await sendMessage(
+            number,
+            'Produto não encontrado. Por favor, selecione uma das opções disponíveis.',
+            wamid,
+        );
+    }
+};
+
+// Handler para seleção de suporte
+const handleSupportSelection = async (
+    number: string,
+    input: string,
+    wamid: string,
+): Promise<void> => {
+    const area = input.toLowerCase();
+
+    if (areaOptions[area]) {
+        await sendMessage(
+            number,
+            `O número para ${area} é: ${areaOptions[area]}`,
+            wamid,
+        );
+        await sendInteractiveMessage(
+            number,
+            'Posso ajudar com mais alguma coisa?',
+            [
+                { id: 'voltar_menu', title: 'Voltar ao Menu' },
+                { id: 'finalizar', title: 'Finalizar Atendimento' },
+            ],
+        );
+    } else {
+        await sendMessage(
+            number,
+            'Área não encontrada. Por favor, selecione uma das opções disponíveis.',
+            wamid,
+        );
+    }
+};
+
+const handleStepInput = async (
+    number: string,
+    input: string,
+    wamid: string,
+    currentStep: ConversationStep,
+): Promise<void> => {
+    const conversation = conversations.get(number);
+    if (!conversation) return;
+
+    switch (currentStep) {
+        case 'CATALOG':
+            await handleCatalogSelection(number, input, wamid);
+            break;
+        case 'WARRANTY':
+            await handleWarrantySelection(number, input, wamid);
+            break;
+        case 'SUPPORT':
+            await handleSupportSelection(number, input, wamid);
+            break;
+        default:
+            await sendMessage(
+                number,
+                'Opção inválida. Por favor, escolha uma das opções disponíveis.',
+            );
+    }
+};
+
+// Adicione esta nova função para lidar com pagamentos
+const handlePayment = async (
+    number: string,
+    action: 'confirm' | 'cancel',
+    wamid: string,
+): Promise<void> => {
+    if (action === 'confirm') {
+        await sendMessage(
+            number,
+            'Ótimo! Aqui está o link para pagamento: [LINK_PAGAMENTO]\n' +
+                'Após confirmar o pagamento, enviaremos os detalhes do pedido.',
+            wamid,
+        );
+        await sendInteractiveMessage(number, 'Deseja realizar outra ação?', [
+            { id: 'voltar_menu', title: 'Voltar ao Menu' },
+            { id: 'finalizar', title: 'Finalizar Atendimento' },
+        ]);
+    } else {
+        await sendMessage(
+            number,
+            'Tudo bem! Se precisar de mais informações sobre o produto, é só me avisar.',
+            wamid,
+        );
+        await sendInteractiveMessage(number, 'Deseja ver outras opções?', [
+            { id: 'voltar_menu', title: 'Voltar ao Menu' },
+            { id: 'finalizar', title: 'Finalizar Atendimento' },
+        ]);
+    }
+};
+
+export default chatBot;

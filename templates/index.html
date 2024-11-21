@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pegatron Arquivos</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #fff9db;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #ffd600;
+            padding: 1rem;
+        }
+        header a {
+            text-decoration: none;
+            color: black;
+            font-weight: bold;
+        }
+        .container {
+            margin: 2rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        table, th, td {
+            border: 1px solid #ccc;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .btn-download {
+            background-color: #4caf50;
+            color: white;
+        }
+        .btn-delete {
+            background-color: #f44336;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Pegatron Arquivos</h1>
+        <div>
+            {% if session.get('is_admin') %}
+                <a href="{{ url_for('logout') }}">Logout</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">Login</a>
+            {% endif %}
+        </div>
+    </header>
+    <div class="container">
+        <form action="{{ url_for('upload') }}" method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" required>
+            <button type="submit" class="btn btn-upload">Upload</button>
+        </form>
+        <table>
+            <thead>
+                <tr>
+                    <th>Arquivo</th>
+                    <th>Data de Upload</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in files %}
+                <tr>
+                    <td>{{ file.name }}</td>
+                    <td>{{ file.date }}</td>
+                    <td>
+                        <a href="{{ url_for('download_file', filename=file.name) }}" class="btn btn-download">Download</a>
+                        {% if session.get('is_admin') %}
+                        <form action="{{ url_for('delete_file', filename=file.name) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-delete">Excluir</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
