@@ -1,0 +1,112 @@
+// Modificação na função de suporte
+const handleSupport = async (number: string, wamid: string): Promise<void> => {
+    await sendInteractiveMessage(
+        number,
+        'Selecione a área de suporte:',
+        [
+            { id: 'suporte_tecnico', title: 'Suporte Técnico' },
+            { id: 'duvidas_gerais', title: 'Dúvidas Gerais' },
+        ],
+        { checkbox: true } // Adiciona checkboxes para as áreas de suporte
+    );
+};
+
+const handleSupportSelection = async (
+    number: string,
+    input: string,
+    wamid: string,
+): Promise<void> => {
+    const area = input.toLowerCase();
+
+    if (areaOptions[area]) {
+        await sendMessage(
+            number,
+            `O número para ${area} é: ${areaOptions[area]}`,
+            wamid,
+        );
+        await sendInteractiveMessage(
+            number,
+            'Posso ajudar com mais alguma coisa?',
+            [
+                { id: 'voltar_menu', title: 'Voltar ao Menu' },
+                { id: 'finalizar', title: 'Finalizar Atendimento' },
+            ]
+        );
+    } else {
+        await sendMessage(
+            number,
+            'Área não encontrada. Por favor, selecione uma das opções disponíveis.',
+            wamid,
+        );
+    }
+};
+
+// Modificação na função de seleção de produtos
+const handleCatalogSelection = async (
+    number: string,
+    input: string,
+    wamid: string,
+): Promise<void> => {
+    const index = parseInt(input) - 1;
+    const conversation = conversations.get(number);
+
+    if (input === '11') {
+        await resetConversation(number);
+        return;
+    }
+
+    if (input === '12') {
+        await endConversation(number);
+        return;
+    }
+
+    if (index >= 0 && index < produtos.length && conversation) {
+        const produto = produtos[index];
+        conversation.currentStep = 'PAYMENT';
+
+        await sendMessage(
+            number,
+            `Produto escolhido: ${produto.title}.\nLink: ${produto.link}`,
+            wamid,
+        );
+        await sendInteractiveMessage(number, 'Deseja realizar o pagamento?', [
+            { id: 'pagamento_sim', title: 'Sim' },
+            { id: 'pagamento_nao', title: 'Não' },
+            { id: 'voltar_menu', title: 'Voltar ao Menu' },
+            { id: 'finalizar', title: 'Finalizar Atendimento' },
+        ]);
+    } else {
+        await sendMessage(
+            number,
+            'Opção inválida. Por favor, selecione um número de produto válido.',
+            wamid,
+        );
+    }
+};
+
+// Modificação para enviar a chave PIX ao selecionar 'Sim' na função de pagamento
+const handlePayment = async (
+    number: string,
+    action: 'confirm' | 'cancel',
+    wamid: string,
+): Promise<void> => {
+    if (action === 'confirm') {
+        await sendMessage(
+            number,
+            'Para realizar o pagamento, utilize o PIX: demetriobernardocosta@hotmail.com',
+            wamid,
+        );
+    } else {
+        await sendMessage(
+            number,
+            'Tudo bem! Se precisar de mais informações sobre o produto, é só me avisar.',
+            wamid,
+        );
+    }
+
+    // Mostra as opções de continuar após qualquer ação
+    await sendInteractiveMessage(number, 'O que deseja fazer agora?', [
+        { id: 'voltar_menu', title: 'Voltar ao Menu' },
+        { id: 'finalizar', title: 'Finalizar Atendimento' },
+    ]);
+};
